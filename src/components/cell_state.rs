@@ -10,3 +10,6 @@ pub enum CellState {
 
 #[derive(Component)]
 pub struct NextState(pub CellState);
+
+#[derive(Component)]
+pub struct CurrentState(pub CellState);

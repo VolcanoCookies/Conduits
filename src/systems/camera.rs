@@ -1,11 +1,15 @@
 use bevy::{input::mouse::MouseWheel, prelude::*};
 
-use crate::{components::cell::CELL_SIZE, resources::controls::Controls};
+use crate::{
+    components::position::Position,
+    resources::controls::{ControlMode, Controls},
+    CELL_SIZE,
+};
 
 #[derive(Component, Default)]
 pub struct MousePosition {
     pub world: Vec2,
-    pub cell: Vec2,
+    pub cell: Position,
     pub screen: Vec2,
 }
 
@@ -39,6 +43,7 @@ pub fn camera_movement(
     mut scroll_events: EventReader<MouseWheel>,
     mut keys: Res<Input<KeyCode>>,
     mut mouse_button: Res<Input<MouseButton>>,
+    controls: Res<Controls>,
     mut mouse_position: ResMut<MousePosition>,
     mut camera_query: Query<(&mut Transform, &mut OrthographicProjection), With<Camera>>,
     mut windows: Res<Windows>,
@@ -49,10 +54,12 @@ pub fn camera_movement(
     for event in scroll_events.iter() {
         zoom_delta += event.y as f32;
     }
-    zoom.0 = zoom.0 * (0.25 / zoom.0).powf((zoom_delta as f32) / 20.);
+    zoom.0 = zoom.0 * (0.125 / zoom.0).powf((zoom_delta as f32) / 20.);
 
     let mut delta = Vec2::ZERO;
-    let dragging = mouse_button.pressed(MouseButton::Right);
+    let dragging = (mouse_button.pressed(Controls::MousePrimary)
+        && controls.mode == ControlMode::Move)
+        || mouse_button.pressed(Controls::MouseMove);
 
     // Calculate new mouse positions
     for event in move_events.iter() {
@@ -66,7 +73,7 @@ pub fn camera_movement(
 
     mouse_position.world =
         window_to_world_position(mouse_position.screen, windows, &camera_transform);
-    mouse_position.cell = (mouse_position.world / CELL_SIZE).round();
+    mouse_position.cell = (mouse_position.world / CELL_SIZE).round().into();
 
     // Move camera with keyboard
     if !dragging {

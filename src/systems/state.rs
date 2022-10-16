@@ -1,60 +1,59 @@
-use bevy::{prelude::*, sprite::Sprite};
+use bevy::prelude::*;
+use bevy_ecs_tilemap::{
+    prelude::{get_tile_neighbors, TilemapType},
+    tiles::{TileColor, TilePos, TileStorage},
+};
 
 use crate::components::{
-    cell::Tickable,
-    cell_state::{CellState, NextState},
+    cell_state::{CellState, CurrentState, NextState},
     colors::Colors,
-    direction::Direction,
-    position::Position,
-    state_map::StateMap,
 };
 
 pub fn update_state(
-    mut commands: Commands,
-    mut state_map: ResMut<StateMap>,
-    mut cell_query: Query<
-        (&Position, &NextState, &mut Sprite),
-        (With<Tickable>, Changed<NextState>),
-    >,
+    mut tile_query: Query<(&mut CurrentState, &NextState, &mut TileColor), Changed<NextState>>,
 ) {
-    for (position, next_state, mut sprite) in cell_query.iter_mut() {
-        state_map.set(position.0, next_state.0);
+    for (mut current_state, next_state, mut tile_color) in tile_query.iter_mut() {
         match next_state.0 {
-            CellState::Conductor => sprite.color = Colors::Conductor,
-            CellState::Tail => sprite.color = Colors::Tail,
-            CellState::Head => sprite.color = Colors::Head,
+            CellState::Conductor => tile_color.0 = Colors::Conductor,
+            CellState::Tail => tile_color.0 = Colors::Tail,
+            CellState::Head => tile_color.0 = Colors::Head,
             CellState::Empty => {}
         }
+        current_state.0 = next_state.0;
     }
 }
 
 pub fn do_state(
-    state_map: Res<StateMap>,
-    mut cell_query: Query<(&Position, &mut NextState), With<Tickable>>,
+    mut commands: Commands,
+    tile_query: Query<(Entity, &TilePos, &CurrentState)>,
+    tilemap_query: Query<(&TileStorage, &TilemapType)>,
 ) {
-    for (position, mut next_state) in cell_query.iter_mut() {
-        let state = state_map.get(position.0);
+    let (tile_storage, tilemap_type) = tilemap_query.single();
 
-        match state {
+    for (entity, tile_pos, current_state) in tile_query.iter() {
+        match current_state.0 {
             CellState::Conductor => {
-                let mut heads: i32 = 0;
-                for dir in Direction::All {
-                    if state_map.get(position.0 + dir) == CellState::Head {
-                        heads += 1;
-                    }
-                }
+                let heads = get_tile_neighbors(tile_pos, tile_storage, tilemap_type)
+                    .into_iter()
+                    .filter(|neighbor| {
+                        let state = tile_query.get_component::<CurrentState>(*neighbor).unwrap();
+                        state.0 == CellState::Head
+                    })
+                    .count();
                 if heads == 1 || heads == 2 {
                     // Turn on this cell
-                    next_state.0 = CellState::Head;
+                    commands.entity(entity).insert(NextState(CellState::Head));
                 }
             }
             CellState::Tail => {
                 // Turn of this cell
-                next_state.0 = CellState::Conductor
+                commands
+                    .entity(entity)
+                    .insert(NextState(CellState::Conductor));
             }
             CellState::Head => {
                 // De-Energize this cell
-                next_state.0 = CellState::Tail
+                commands.entity(entity).insert(NextState(CellState::Tail));
             }
             CellState::Empty => {}
         }
